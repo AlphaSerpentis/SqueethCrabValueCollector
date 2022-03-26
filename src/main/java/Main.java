@@ -32,11 +32,11 @@ public class Main {
     public static PrintWriter outputFile;
     public static Web3j web3;
     public static EthFilter filter;
-    public static String crab, oSQTH, controller, pool, oracle, ethusdcPool, usdc = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", weth = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2";
+    public static String crab, oSQTH, controller, pool, ethusdcPool, oracle, usdc = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", weth = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2";
 
     public static void main(String[] args) throws Exception {
         if(args.length != 7)
-             throw new Exception("(0) node HTTP addr, (1) crab address, (2) oSQTH, (3) controller, (4) oSQTH/WETH pool, (5) oracle, (6) ethusdc pool");
+             throw new Exception("Missing arguments, please pass the following: \n\n(0) node HTTP URL, (1) crab address, (2) oSQTH address, (3) Squeeth controller address, (4) oSQTH/WETH pool address, (5) ethusdc pool address, (6) output file path");
         else {
             HttpService node = new HttpService(args[0]);
             web3 = Web3j.build(node);
@@ -45,15 +45,14 @@ public class Main {
             oSQTH = args[2];
             controller = args[3];
             pool = args[4];
-            oracle = args[5];
-            ethusdcPool = args[6];
+            ethusdcPool = args[5];
 
-            filter = new EthFilter(new DefaultBlockParameterNumber(14048622), DefaultBlockParameterName.LATEST, crab).addOptionalTopics("0xa13b272c1cf13ba724064d3d4809d9f557aab8da2bb582cba031a2f57e728e9d", "0x5d85169ff8329e90f3225f9798e0eba54d00c55d3bbfe201a0d1606febb23a8e");
+            filter = new EthFilter(new DefaultBlockParameterNumber(14048622), DefaultBlockParameterName.LATEST, crab).addOptionalTopics("0x878fd3ca52ad322c7535f559ee7c91afc67363073783360ef1b1420589dc6174", "0x4c1a959210172325f5c6678421c3834b04ae8ce57f7a7c0c0bbfbb62bca37e34", "0xa13b272c1cf13ba724064d3d4809d9f557aab8da2bb582cba031a2f57e728e9d", "0x5d85169ff8329e90f3225f9798e0eba54d00c55d3bbfe201a0d1606febb23a8e");
 
-            outputFile = new PrintWriter("./output/data.csv");
+            outputFile = new PrintWriter(args[6]);
 
             StringBuilder sb = new StringBuilder();
-            sb.append("Timestamp").append(",").append("ETH Price").append(",").append("USD Price").append('\n');
+            sb.append("Timestamp").append(",").append("ETH Price").append(",").append("USD Price").append(",").append("Hedged?").append('\n');
 
             outputFile.print(sb);
 
@@ -64,10 +63,18 @@ public class Main {
                         System.out.println("\nBlock " + log.getBlockNumber().toString());
 
                         EthBlock block = web3.ethGetBlockByNumber(new DefaultBlockParameterNumber(log.getBlockNumber()), false).send();
+                        boolean hedged = false;
+
+                        for(String s: log.getTopics()) {
+                            if(s.equalsIgnoreCase("0x4c1a959210172325f5c6678421c3834b04ae8ce57f7a7c0c0bbfbb62bca37e34") || s.equalsIgnoreCase("0x878fd3ca52ad322c7535f559ee7c91afc67363073783360ef1b1420589dc6174")) {
+                                hedged = true;
+                                break;
+                            }
+                        }
 
                         try {
                             Double[] prices = calculatePriceAtBlock(log.getBlockNumber());
-                            writeToFile(block.getBlock().getTimestamp().doubleValue(), prices[0], prices[1]);
+                            writeToFile(block.getBlock().getTimestamp().doubleValue(), prices[0], prices[1], hedged);
                         } catch (Exception e) {
                             System.out.println(e.getMessage());
                         }
@@ -77,9 +84,9 @@ public class Main {
         }
     }
 
-    public static void writeToFile(Double block, Double ethPrice, Double usdPrice) throws IOException {
+    public static void writeToFile(Double block, Double ethPrice, Double usdPrice, boolean hedged) throws IOException {
         StringBuilder sb = new StringBuilder();
-        sb.append(block).append(',').append(ethPrice).append(',').append(usdPrice).append('\n');
+        sb.append(block).append(',').append(ethPrice).append(',').append(usdPrice).append(',').append(hedged).append('\n');
 
         outputFile.print(sb);
 
@@ -91,9 +98,15 @@ public class Main {
 
         // Functions to call
 
+        Function callCrabOracle = new Function("oracle",
+                Collections.emptyList(),
+                Arrays.asList(
+                        new TypeReference<Address>() { }
+                )
+        );
         Function callVaultsFunc = new Function("vaults",
                 Arrays.asList(
-                    new org.web3j.abi.datatypes.Uint(BigInteger.valueOf(70))
+                        new org.web3j.abi.datatypes.Uint(BigInteger.valueOf(70))
                 ),
                 Arrays.asList(
                         new TypeReference<Address>() { },
@@ -126,9 +139,28 @@ public class Main {
                         new TypeReference<Uint256>() { }
                 )
         );
-        Function callTotalSupply = new Function("totalSupply", Collections.emptyList(), Arrays.asList(new TypeReference<Uint256>() { }));
+        Function callTotalSupply = new Function("totalSupply",
+                Collections.emptyList(),
+                Arrays.asList(new TypeReference<Uint256>() { }
+                )
+        );
 
         // Call
+
+        if(oracle == null) {
+            oracle = (String) FunctionReturnDecoder.decode(
+                    web3.ethCall(
+                            Transaction.createEthCallTransaction(
+                                    zeroAddress,
+                                    crab,
+                                    FunctionEncoder.encode(callCrabOracle)
+                            ),
+                            new DefaultBlockParameterNumber(Long.parseLong(block.toString()))
+                    ).sendAsync().get().getResult(),
+                    callCrabOracle.getOutputParameters()
+            ).get(0).getValue();
+        }
+
         EthCall response_vaultsFunc = web3.ethCall(
                 Transaction.createEthCallTransaction(
                         zeroAddress,
