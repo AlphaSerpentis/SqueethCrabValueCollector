@@ -17,7 +17,6 @@ import org.web3j.protocol.core.methods.response.EthBlock;
 import org.web3j.protocol.core.methods.response.EthCall;
 import org.web3j.protocol.http.HttpService;
 
-import java.io.IOException;
 import java.io.PrintWriter;
 import java.math.BigInteger;
 import java.util.Arrays;
@@ -29,27 +28,33 @@ public class Main {
 
     public static final String zeroAddress = "0x0000000000000000000000000000000000000000";
 
+    public static volatile BigInteger lastBlock = new BigInteger("0");
+
+    public static DefaultBlockParameterNumber startBlockSearch;
     public static PrintWriter outputFile;
     public static Web3j web3;
     public static EthFilter filter;
-    public static String crab, oSQTH, controller, pool, ethusdcPool, oracle, usdc = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", weth = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2";
+    public static String crab, oSQTH, pool, ethusdcPool, oracle, usdc = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", weth = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2";
 
     public static void main(String[] args) throws Exception {
-        if(args.length != 7)
-             throw new Exception("Missing arguments, please pass the following: \n\n(0) node HTTP URL, (1) crab address, (2) oSQTH address, (3) Squeeth controller address, (4) oSQTH/WETH pool address, (5) ethusdc pool address, (6) output file path");
+        if(args.length != 6)
+             throw new Exception("Missing arguments, please pass the following: \n\n(0) node HTTP URL, (1) crab address, (2) ethusdc pool address, (3) starting block for search, (4) ending block for search, (5) output file path");
         else {
             HttpService node = new HttpService(args[0]);
             web3 = Web3j.build(node);
 
             crab = args[1];
-            oSQTH = args[2];
-            controller = args[3];
-            pool = args[4];
-            ethusdcPool = args[5];
+            ethusdcPool = args[2];
+            startBlockSearch = new DefaultBlockParameterNumber(Long.parseLong(args[3]));
 
-            filter = new EthFilter(new DefaultBlockParameterNumber(14048622), DefaultBlockParameterName.LATEST, crab).addOptionalTopics("0x878fd3ca52ad322c7535f559ee7c91afc67363073783360ef1b1420589dc6174", "0x4c1a959210172325f5c6678421c3834b04ae8ce57f7a7c0c0bbfbb62bca37e34", "0xa13b272c1cf13ba724064d3d4809d9f557aab8da2bb582cba031a2f57e728e9d", "0x5d85169ff8329e90f3225f9798e0eba54d00c55d3bbfe201a0d1606febb23a8e");
+            if(args[4].isBlank() || Long.parseLong(args[4]) == 0 || Long.parseLong(args[4]) < Long.parseLong(args[3]))
+                filter = new EthFilter(startBlockSearch, DefaultBlockParameterName.LATEST, crab).addOptionalTopics("0x878fd3ca52ad322c7535f559ee7c91afc67363073783360ef1b1420589dc6174", "0x4c1a959210172325f5c6678421c3834b04ae8ce57f7a7c0c0bbfbb62bca37e34", "0xa13b272c1cf13ba724064d3d4809d9f557aab8da2bb582cba031a2f57e728e9d", "0x5d85169ff8329e90f3225f9798e0eba54d00c55d3bbfe201a0d1606febb23a8e");
+            else
+                filter = new EthFilter(startBlockSearch, new DefaultBlockParameterNumber(Long.parseLong(args[4])), crab).addOptionalTopics("0x878fd3ca52ad322c7535f559ee7c91afc67363073783360ef1b1420589dc6174", "0x4c1a959210172325f5c6678421c3834b04ae8ce57f7a7c0c0bbfbb62bca37e34", "0xa13b272c1cf13ba724064d3d4809d9f557aab8da2bb582cba031a2f57e728e9d", "0x5d85169ff8329e90f3225f9798e0eba54d00c55d3bbfe201a0d1606febb23a8e");
 
-            outputFile = new PrintWriter(args[6]);
+            callAndSetOtherContracts();
+
+            outputFile = new PrintWriter(args[5]);
 
             StringBuilder sb = new StringBuilder();
             sb.append("Timestamp").append(",").append("ETH Price").append(",").append("USD Price").append(",").append("Hedged?").append('\n');
@@ -62,6 +67,12 @@ public class Main {
                     log -> {
                         System.out.println("\nBlock " + log.getBlockNumber().toString());
 
+                        if(lastBlock.equals(log.getBlockNumber())) {
+                            return;
+                        }
+
+                        lastBlock = log.getBlockNumber();
+
                         EthBlock block = web3.ethGetBlockByNumber(new DefaultBlockParameterNumber(log.getBlockNumber()), false).send();
                         boolean hedged = false;
 
@@ -73,7 +84,7 @@ public class Main {
                         }
 
                         try {
-                            Double[] prices = calculatePriceAtBlock(log.getBlockNumber());
+                            Double[] prices = calculatePriceAtBlock(log.getBlockNumber(), hedged);
                             writeToFile(block.getBlock().getTimestamp().doubleValue(), prices[0], prices[1], hedged);
                         } catch (Exception e) {
                             System.out.println(e.getMessage());
@@ -84,7 +95,7 @@ public class Main {
         }
     }
 
-    public static void writeToFile(Double block, Double ethPrice, Double usdPrice, boolean hedged) throws IOException {
+    public static void writeToFile(Double block, Double ethPrice, Double usdPrice, boolean hedged) {
         StringBuilder sb = new StringBuilder();
         sb.append(block).append(',').append(ethPrice).append(',').append(usdPrice).append(',').append(hedged).append('\n');
 
@@ -93,21 +104,71 @@ public class Main {
         outputFile.flush();
     }
 
-    public static Double[] calculatePriceAtBlock(BigInteger block) throws ExecutionException, InterruptedException {
-        BigInteger calculatedPrice, shortoSQTH, ethCollateral, priceOfoSQTH, priceOfETHinUSD, ethTerms, totalSupply;
-
-        // Functions to call
-
+    public static void callAndSetOtherContracts() throws ExecutionException, InterruptedException {
         Function callCrabOracle = new Function("oracle",
                 Collections.emptyList(),
                 Arrays.asList(
                         new TypeReference<Address>() { }
                 )
         );
-        Function callVaultsFunc = new Function("vaults",
+        Function callwPowerPerp = new Function("wPowerPerp",
+                Collections.emptyList(),
                 Arrays.asList(
-                        new org.web3j.abi.datatypes.Uint(BigInteger.valueOf(70))
-                ),
+                        new TypeReference<Address>() { }
+                )
+        );
+        Function callethWSqueethPool = new Function("ethWSqueethPool",
+                Collections.emptyList(),
+                Arrays.asList(
+                        new TypeReference<Address>() { }
+                )
+        );
+
+        oracle = (String) FunctionReturnDecoder.decode(
+                web3.ethCall(
+                        Transaction.createEthCallTransaction(
+                                zeroAddress,
+                                crab,
+                                FunctionEncoder.encode(callCrabOracle)
+                        ),
+                        startBlockSearch
+                ).sendAsync().get().getResult(),
+                callCrabOracle.getOutputParameters()
+        ).get(0).getValue();
+
+        oSQTH = (String) FunctionReturnDecoder.decode(
+                web3.ethCall(
+                        Transaction.createEthCallTransaction(
+                                zeroAddress,
+                                crab,
+                                FunctionEncoder.encode(callwPowerPerp)
+                        ),
+                        startBlockSearch
+                ).sendAsync().get().getResult(),
+                callwPowerPerp.getOutputParameters()
+        ).get(0).getValue();
+
+        pool = (String) FunctionReturnDecoder.decode(
+                web3.ethCall(
+                        Transaction.createEthCallTransaction(
+                                zeroAddress,
+                                crab,
+                                FunctionEncoder.encode(callethWSqueethPool)
+                        ),
+                        startBlockSearch
+                ).sendAsync().get().getResult(),
+                callethWSqueethPool.getOutputParameters()
+        ).get(0).getValue();
+
+    }
+
+    public static Double[] calculatePriceAtBlock(BigInteger block, boolean hedged) throws ExecutionException, InterruptedException {
+        BigInteger calculatedPrice, shortoSQTH, ethCollateral, priceOfoSQTH, priceOfETHinUSD, ethTerms, totalSupply;
+
+        // Functions to call
+
+        Function callVaultsFunc = new Function("getVaultDetails",
+                Collections.emptyList(),
                 Arrays.asList(
                         new TypeReference<Address>() { },
                         new TypeReference<Uint32>() { },
@@ -147,29 +208,14 @@ public class Main {
 
         // Call
 
-        if(oracle == null) {
-            oracle = (String) FunctionReturnDecoder.decode(
-                    web3.ethCall(
-                            Transaction.createEthCallTransaction(
-                                    zeroAddress,
-                                    crab,
-                                    FunctionEncoder.encode(callCrabOracle)
-                            ),
-                            new DefaultBlockParameterNumber(Long.parseLong(block.toString()))
-                    ).sendAsync().get().getResult(),
-                    callCrabOracle.getOutputParameters()
-            ).get(0).getValue();
-        }
-
         EthCall response_vaultsFunc = web3.ethCall(
                 Transaction.createEthCallTransaction(
                         zeroAddress,
-                        controller,
+                        crab,
                         FunctionEncoder.encode(callVaultsFunc)
                 ),
                 new DefaultBlockParameterNumber(Long.parseLong(block.toString()))
         ).sendAsync().get();
-
         EthCall response_uniswapv3PriceCheck = web3.ethCall(
                 Transaction.createEthCallTransaction(
                         zeroAddress,
