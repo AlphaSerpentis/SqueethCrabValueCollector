@@ -1,3 +1,5 @@
+package space.alphaserpentis.crab_data;
+
 import org.web3j.abi.FunctionEncoder;
 import org.web3j.abi.FunctionReturnDecoder;
 import org.web3j.abi.TypeReference;
