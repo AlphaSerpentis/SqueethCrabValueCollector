@@ -165,7 +165,7 @@ public class Main {
     }
 
     public static Double[] calculatePriceAtBlock(BigInteger block, boolean hedged) throws ExecutionException, InterruptedException {
-        BigInteger calculatedPrice, shortoSQTH, ethCollateral, priceOfoSQTH, priceOfETHinUSD, ethTerms, totalSupply;
+        BigInteger value, shortAmount, collateralAmount, priceOfoSQTH, priceOfETHinUSD, ethTerms, totalSupply;
 
         // Functions to call
 
@@ -269,26 +269,19 @@ public class Main {
 
         // Set Values
 
-        ethCollateral = (BigInteger)  decodedList_0.get(2).getValue();
-        shortoSQTH = (BigInteger) decodedList_0.get(3).getValue();
+        collateralAmount = (BigInteger)  decodedList_0.get(2).getValue();
+        shortAmount = (BigInteger) decodedList_0.get(3).getValue();
         priceOfoSQTH = (BigInteger) decodedList_1.get(0).getValue();
         priceOfETHinUSD = (BigInteger) decodedList_2.get(0).getValue();
         totalSupply = (BigInteger) decodedList_3.get(0).getValue();
 
-//        System.out.println(ethCollateral.doubleValue());
-//        System.out.println(shortoSQTH.doubleValue());
-//        System.out.println(priceOfoSQTH.doubleValue());
-//        System.out.println(priceOfETHinUSD.doubleValue());
-
-        // 2+2 is 4, minus 1 that's 3 quick maths
-        ethTerms = ethCollateral.subtract(shortoSQTH.multiply(priceOfoSQTH).divide(BigInteger.valueOf((long) Math.pow(10,18))));
-        calculatedPrice = ethTerms.multiply(priceOfETHinUSD).divide(BigInteger.valueOf((long) Math.pow(10,18)));
-
-//        System.out.println("ETH Terms: " + ethTerms.multiply(BigInteger.valueOf((long) Math.pow(10,18))).divide(totalSupply).doubleValue() / Math.pow(10, 18));
+        // Takes ETH and USD net value respectively
+        ethTerms = collateralAmount.subtract(shortAmount.multiply(priceOfoSQTH).divide(BigInteger.valueOf((long) Math.pow(10,18))));
+        value = ethTerms.multiply(priceOfETHinUSD).divide(BigInteger.valueOf((long) Math.pow(10,18)));
 
         return new Double[] {
             ethTerms.multiply(BigInteger.valueOf((long) Math.pow(10,18))).divide(totalSupply).doubleValue() / Math.pow(10, 18),
-            calculatedPrice.multiply(BigInteger.valueOf((long) Math.pow(10,18))).divide(totalSupply).doubleValue() / Math.pow(10, 18)
+            value.multiply(BigInteger.valueOf((long) Math.pow(10,18))).divide(totalSupply).doubleValue() / Math.pow(10, 18)
         };
     }
 }
