@@ -183,7 +183,7 @@ public class Main {
                         new org.web3j.abi.datatypes.Address(pool),
                         new org.web3j.abi.datatypes.Address(oSQTH),
                         new org.web3j.abi.datatypes.Address(weth),
-                        new Uint32(420),
+                        new Uint32(1),
                         new org.web3j.abi.datatypes.Bool(true)
                 ),
                 Arrays.asList(
@@ -195,7 +195,7 @@ public class Main {
                         new org.web3j.abi.datatypes.Address(ethusdcPool),
                         new org.web3j.abi.datatypes.Address(weth),
                         new org.web3j.abi.datatypes.Address(usdc),
-                        new Uint32(420),
+                        new Uint32(1),
                         new org.web3j.abi.datatypes.Bool(true)
                 ),
                 Arrays.asList(
