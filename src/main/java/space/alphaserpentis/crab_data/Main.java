@@ -59,7 +59,7 @@ public class Main {
             outputFile = new PrintWriter(args[5]);
 
             StringBuilder sb = new StringBuilder();
-            sb.append("Timestamp").append(",").append("ETH Price").append(",").append("USD Price").append(",").append("Hedged?").append('\n');
+            sb.append("Timestamp").append(",").append("ETH/USD").append(",").append("Crab/ETH").append(",").append("Crab/USD").append(",").append("Hedged?").append('\n');
 
             outputFile.print(sb);
 
@@ -87,7 +87,7 @@ public class Main {
 
                         try {
                             Double[] prices = calculatePriceAtBlock(log.getBlockNumber(), hedged);
-                            writeToFile(block.getBlock().getTimestamp().doubleValue(), prices[0], prices[1], hedged);
+                            writeToFile(block.getBlock().getTimestamp().doubleValue(), prices[0], prices[1], prices[2], hedged);
                         } catch (Exception e) {
                             System.out.println(e.getMessage());
                         }
@@ -97,9 +97,9 @@ public class Main {
         }
     }
 
-    public static void writeToFile(Double block, Double ethPrice, Double usdPrice, boolean hedged) {
+    public static void writeToFile(Double block, Double ethPrice, Double ethTerms, Double usdTerms, boolean hedged) {
         StringBuilder sb = new StringBuilder();
-        sb.append(block).append(',').append(ethPrice).append(',').append(usdPrice).append(',').append(hedged).append('\n');
+        sb.append(block).append(',').append(ethPrice).append(',').append(ethTerms).append(',').append(usdTerms).append(',').append(hedged).append('\n');
 
         outputFile.print(sb);
 
@@ -280,6 +280,7 @@ public class Main {
         value = ethTerms.multiply(priceOfETHinUSD).divide(BigInteger.valueOf((long) Math.pow(10,18)));
 
         return new Double[] {
+            priceOfETHinUSD.doubleValue() / Math.pow(10,18),
             ethTerms.multiply(BigInteger.valueOf((long) Math.pow(10,18))).divide(totalSupply).doubleValue() / Math.pow(10, 18),
             value.multiply(BigInteger.valueOf((long) Math.pow(10,18))).divide(totalSupply).doubleValue() / Math.pow(10, 18)
         };
