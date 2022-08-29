@@ -4,20 +4,20 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>org.example</groupId>
+    <groupId>space.alphaserpentis</groupId>
     <artifactId>SqueethQuerying</artifactId>
     <version>1.0</version>
     <dependencies>
         <dependency>
             <groupId>org.web3j</groupId>
             <artifactId>core</artifactId>
-            <version>5.0.0</version>
+            <version>4.9.4</version>
         </dependency>
     </dependencies>
 
     <properties>
-        <maven.compiler.source>14</maven.compiler.source>
-        <maven.compiler.target>14</maven.compiler.target>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
         <mainfile>space.alphaserpentis.crab_data.Main</mainfile>
     </properties>
 
